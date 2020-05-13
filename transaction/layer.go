@@ -46,6 +46,8 @@ type layer struct {
 	log log.Logger
 }
 
+type LayerFactory func(tpl transport.Layer, logger log.Logger) Layer
+
 func NewLayer(tpl transport.Layer, logger log.Logger) Layer {
 	txl := &layer{
 		tpl:          tpl,

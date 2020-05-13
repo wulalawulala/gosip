@@ -77,8 +77,15 @@ func NewListenerPool(
 	output chan<- Connection,
 	errs chan<- error,
 	cancel <-chan struct{},
-	logger log.Logger,
+	options ...ListenerPoolOption,
 ) ListenerPool {
+	optionsHash := &listenerPoolOptions{
+		logger: log.NewDefaultLogrusLogger(),
+	}
+	for _, option := range options {
+		option.applyListenerPool(optionsHash)
+	}
+
 	pool := &listenerPool{
 		store: make(map[ListenerKey]ListenerHandler),
 		keys:  make([]ListenerKey, 0),
@@ -94,7 +101,7 @@ func NewListenerPool(
 		updates: make(chan *listenerRequest),
 		drops:   make(chan *listenerRequest),
 	}
-	pool.log = logger.
+	pool.log = optionsHash.logger.
 		WithPrefix("transport.ListenerPool").
 		WithFields(log.Fields{
 			"listener_pool_ptr": fmt.Sprintf("%p", pool),
@@ -483,7 +490,11 @@ func (pool *listenerPool) put(key ListenerKey, listener net.Listener) error {
 	}
 
 	// wrap to handler
-	handler := NewListenerHandler(key, listener, pool.hconns, pool.herrs, pool.cancel, pool.Log())
+	handler := NewListenerHandler(
+		key, listener,
+		pool.hconns, pool.herrs, pool.cancel,
+		WithLogger(pool.Log()),
+	)
 
 	pool.Log().WithFields(handler.Log().Fields()).Trace("put listener to the pool")
 
@@ -636,8 +647,15 @@ func NewListenerHandler(
 	output chan<- Connection,
 	errs chan<- error,
 	cancel <-chan struct{},
-	logger log.Logger,
+	options ...ListenerHandlerOption,
 ) ListenerHandler {
+	optionsHash := &listenerHandlerOptions{
+		logger: log.NewDefaultLogrusLogger(),
+	}
+	for _, option := range options {
+		option.applyListenerHandler(optionsHash)
+	}
+
 	handler := &listenerHandler{
 		key:      key,
 		listener: listener,
@@ -650,7 +668,7 @@ func NewListenerHandler(
 		done:     make(chan struct{}),
 	}
 
-	handler.log = logger.
+	handler.log = optionsHash.logger.
 		WithPrefix("transport.ListenerHandler").
 		WithFields(log.Fields{
 			"listener_handler_ptr": fmt.Sprintf("%p", handler),
@@ -751,7 +769,7 @@ func (handler *listenerHandler) acceptConnections(wg *sync.WaitGroup, conns chan
 		}
 
 		key := ConnectionKey(strings.ToLower(baseConn.RemoteAddr().Network()) + ":" + baseConn.RemoteAddr().String())
-		conn := NewConnection(baseConn, key, handler.Log())
+		conn := NewConnection(baseConn, key, WithLogger(handler.Log()))
 
 		select {
 		case <-handler.canceled:

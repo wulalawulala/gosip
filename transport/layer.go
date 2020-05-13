@@ -32,14 +32,13 @@ var protocolFactory ProtocolFactory = func(
 	output chan<- sip.Message,
 	errs chan<- error,
 	cancel <-chan struct{},
-	msgMapper sip.MessageMapper,
-	logger log.Logger,
+	options ...ProtocolOption,
 ) (Protocol, error) {
 	switch strings.ToLower(network) {
 	case "udp":
-		return NewUdpProtocol(output, errs, cancel, msgMapper, logger), nil
+		return NewUdpProtocol(output, errs, cancel, options...), nil
 	case "tcp":
-		return NewTcpProtocol(output, errs, cancel, msgMapper, logger), nil
+		return NewTcpProtocol(output, errs, cancel, options...), nil
 	default:
 		return nil, UnsupportedProtocolError(fmt.Sprintf("protocol %s is not supported", network))
 	}
@@ -59,7 +58,7 @@ func GetProtocolFactory() ProtocolFactory {
 type layer struct {
 	protocols   *protocolStore
 	listenPorts map[string]*sip.Port
-	ip          net.IP
+	hostIP      net.IP
 	dnsResolver *net.Resolver
 	msgMapper   sip.MessageMapper
 
@@ -76,21 +75,28 @@ type layer struct {
 	log log.Logger
 }
 
+type LayerFactory func(hostIP net.IP, options ...LayerOption) Layer
+
 // NewLayer creates transport layer.
-// - ip - host IP
+// - hostIP - host IP
 // - dnsAddr - DNS server address, default is 127.0.0.1:53
-func NewLayer(
-	ip net.IP,
-	dnsResolver *net.Resolver,
-	msgMapper sip.MessageMapper,
-	logger log.Logger,
-) Layer {
+func NewLayer(hostIP net.IP, options ...LayerOption) Layer {
+	optionsHash := &layerOptions{
+		commonOptions: commonOptions{
+			logger: log.NewDefaultLogrusLogger(),
+		},
+		dnsResolver: net.DefaultResolver,
+	}
+	for _, option := range options {
+		option.applyLayer(optionsHash)
+	}
+
 	tpl := &layer{
 		protocols:   newProtocolStore(),
 		listenPorts: make(map[string]*sip.Port),
-		ip:          ip,
-		dnsResolver: dnsResolver,
-		msgMapper:   msgMapper,
+		hostIP:      hostIP,
+		dnsResolver: optionsHash.dnsResolver,
+		msgMapper:   optionsHash.msgMapper,
 
 		msgs:     make(chan sip.Message),
 		errs:     make(chan error),
@@ -100,7 +106,7 @@ func NewLayer(
 		done:     make(chan struct{}),
 	}
 
-	tpl.log = logger.
+	tpl.log = optionsHash.logger.
 		WithPrefix("transport.Layer").
 		WithFields(map[string]interface{}{
 			"transport_layer_ptr": fmt.Sprintf("%p", tpl),
@@ -172,8 +178,8 @@ func (tpl *layer) Listen(network string, addr string) error {
 			tpl.pmsgs,
 			tpl.perrs,
 			tpl.canceled,
-			tpl.msgMapper,
-			tpl.Log(),
+			WithMessageMapper(tpl.msgMapper),
+			WithLogger(tpl.Log()),
 		)
 		if err != nil {
 			return err
@@ -219,7 +225,7 @@ func (tpl *layer) Send(msg sip.Message) error {
 			nets = append(nets, "UDP", "TCP")
 		}
 
-		viaHop.Host = tpl.ip.String()
+		viaHop.Host = tpl.hostIP.String()
 		if viaHop.Params == nil {
 			viaHop.Params = sip.NewParams()
 		}

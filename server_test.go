@@ -21,13 +21,12 @@ var _ = Describe("GoSIP Server", func() {
 		invite       sip.Message
 	)
 
-	srvConf := gosip.ServerConfig{}
 	clientAddr := "127.0.0.1:9001"
 	localTarget := transport.NewTarget("127.0.0.1", 5060)
 	logger := testutils.NewLogrusLogger()
 
 	BeforeEach(func() {
-		srv = gosip.NewServer(srvConf, nil, nil, logger)
+		srv = gosip.NewServer(gosip.WithLogger(logger))
 		Expect(srv.Listen("udp", "0.0.0.0:5060")).To(Succeed())
 
 		client1 = testutils.CreateClient("udp", localTarget.Addr(), clientAddr)

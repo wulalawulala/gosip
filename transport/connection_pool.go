@@ -94,13 +94,19 @@ func NewConnectionPool(
 	output chan<- sip.Message,
 	errs chan<- error,
 	cancel <-chan struct{},
-	msgMapper sip.MessageMapper,
-	logger log.Logger,
+	options ...ConnectionPoolOption,
 ) ConnectionPool {
+	optionsHash := &connectionPoolOptions{
+		logger: log.NewDefaultLogrusLogger(),
+	}
+	for _, option := range options {
+		option.applyConnectionPool(optionsHash)
+	}
+
 	pool := &connectionPool{
 		store:     make(map[ConnectionKey]ConnectionHandler),
 		keys:      make([]ConnectionKey, 0),
-		msgMapper: msgMapper,
+		msgMapper: optionsHash.msgMapper,
 
 		output: output,
 		errs:   errs,
@@ -115,7 +121,7 @@ func NewConnectionPool(
 		drops:   make(chan *connectionRequest),
 	}
 
-	pool.log = logger.
+	pool.log = optionsHash.logger.
 		WithPrefix("transport.ConnectionPool").
 		WithFields(log.Fields{
 			"connection_pool_ptr": fmt.Sprintf("%p", pool),
@@ -564,8 +570,8 @@ func (pool *connectionPool) put(key ConnectionKey, conn Connection, ttl time.Dur
 		pool.hmess,
 		pool.herrs,
 		pool.cancel,
-		pool.msgMapper,
-		pool.Log(),
+		WithMessageMapper(pool.msgMapper),
+		WithLogger(pool.Log()),
 	)
 
 	pool.Log().WithFields(handler.Log().Fields()).
@@ -734,12 +740,18 @@ func NewConnectionHandler(
 	output chan<- sip.Message,
 	errs chan<- error,
 	cancel <-chan struct{},
-	msgMapper sip.MessageMapper,
-	logger log.Logger,
+	options ...ConnectionHandlerOption,
 ) ConnectionHandler {
+	optionsHash := &connectionHandlerOptions{
+		logger: log.NewDefaultLogrusLogger(),
+	}
+	for _, option := range options {
+		option.applyConnectionHandler(optionsHash)
+	}
+
 	handler := &connectionHandler{
 		connection: conn,
-		msgMapper:  msgMapper,
+		msgMapper:  optionsHash.msgMapper,
 
 		output: output,
 		errs:   errs,
@@ -751,7 +763,7 @@ func NewConnectionHandler(
 		ttl: ttl,
 	}
 
-	handler.log = logger.
+	handler.log = optionsHash.logger.
 		WithPrefix("transport.ConnectionHandler").
 		WithFields(log.Fields{
 			"connection_handler_ptr": fmt.Sprintf("%p", handler),

@@ -34,7 +34,7 @@ var _ = Describe("ListenerHandler", func() {
 			errs = make(chan error)
 			cancel = make(chan struct{})
 			ls = testutils.NewMockListener(addr)
-			handler = transport.NewListenerHandler(key, ls, output, errs, cancel, logger)
+			handler = transport.NewListenerHandler(key, ls, output, errs, cancel, transport.WithLogger(logger))
 		})
 
 		It("has ListenerKey", func() {
@@ -51,7 +51,7 @@ var _ = Describe("ListenerHandler", func() {
 			errs = make(chan error)
 			cancel = make(chan struct{})
 			ls = testutils.NewMockListener(addr)
-			handler = transport.NewListenerHandler(key, ls, output, errs, cancel, logger)
+			handler = transport.NewListenerHandler(key, ls, output, errs, cancel, transport.WithLogger(logger))
 
 			wg = new(sync.WaitGroup)
 			wg.Add(1)
@@ -168,7 +168,7 @@ var _ = Describe("ListenerPool", func() {
 			output = make(chan transport.Connection)
 			errs = make(chan error)
 			cancel = make(chan struct{})
-			pool = transport.NewListenerPool(output, errs, cancel, logger)
+			pool = transport.NewListenerPool(output, errs, cancel, transport.WithLogger(logger))
 		})
 
 		ShouldBeEmpty()
@@ -184,7 +184,7 @@ var _ = Describe("ListenerPool", func() {
 			output = make(chan transport.Connection)
 			errs = make(chan error)
 			cancel = make(chan struct{})
-			pool = transport.NewListenerPool(output, errs, cancel, logger)
+			pool = transport.NewListenerPool(output, errs, cancel, transport.WithLogger(logger))
 			expected = "listener pool closed"
 
 			close(cancel)
@@ -228,7 +228,7 @@ var _ = Describe("ListenerPool", func() {
 			output = make(chan transport.Connection)
 			errs = make(chan error)
 			cancel = make(chan struct{})
-			pool = transport.NewListenerPool(output, errs, cancel, logger)
+			pool = transport.NewListenerPool(output, errs, cancel, transport.WithLogger(logger))
 
 			ls1 = testutils.NewMockListener(addr1)
 			ls2 = testutils.NewMockListener(addr2)

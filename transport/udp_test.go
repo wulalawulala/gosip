@@ -94,7 +94,7 @@ var _ = Describe("UdpProtocol", func() {
 		output = make(chan sip.Message)
 		errs = make(chan error)
 		cancel = make(chan struct{})
-		protocol = transport.NewUdpProtocol(output, errs, cancel, nil, logger)
+		protocol = transport.NewUdpProtocol(output, errs, cancel, transport.WithLogger(logger))
 	})
 	AfterEach(func(done Done) {
 		wg.Wait()

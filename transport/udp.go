@@ -19,20 +19,30 @@ func NewUdpProtocol(
 	output chan<- sip.Message,
 	errs chan<- error,
 	cancel <-chan struct{},
-	msgMapper sip.MessageMapper,
-	logger log.Logger,
+	options ...ProtocolOption,
 ) Protocol {
+	optionsHash := &protocolOptions{
+		logger: log.NewDefaultLogrusLogger(),
+	}
+	for _, option := range options {
+		option.applyProtocol(optionsHash)
+	}
+
 	udp := new(udpProtocol)
 	udp.network = "udp"
 	udp.reliable = false
 	udp.streamed = false
-	udp.log = logger.
+	udp.log = optionsHash.logger.
 		WithPrefix("transport.Protocol").
 		WithFields(log.Fields{
 			"protocol_ptr": fmt.Sprintf("%p", udp),
 		})
 	// TODO: add separate errs chan to listen errors from pool for reconnection?
-	udp.connections = NewConnectionPool(output, errs, cancel, msgMapper, udp.Log())
+	udp.connections = NewConnectionPool(
+		output, errs, cancel,
+		WithMessageMapper(optionsHash.msgMapper),
+		WithLogger(udp.Log()),
+	)
 
 	return udp
 }
@@ -65,7 +75,7 @@ func (udp *udpProtocol) Listen(target *Target) error {
 	// register new connection
 	// index by local address, TTL=0 - unlimited expiry time
 	key := ConnectionKey(fmt.Sprintf("udp:0.0.0.0:%d", laddr.Port))
-	conn := NewConnection(udpConn, key, udp.Log())
+	conn := NewConnection(udpConn, key, WithLogger(udp.Log()))
 	err = udp.connections.Put(conn, 0)
 
 	return err // should be nil here

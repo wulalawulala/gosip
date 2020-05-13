@@ -21,22 +21,35 @@ func NewTcpProtocol(
 	output chan<- sip.Message,
 	errs chan<- error,
 	cancel <-chan struct{},
-	msgMapper sip.MessageMapper,
-	logger log.Logger,
+	options ...ProtocolOption,
 ) Protocol {
+	optionsHash := &protocolOptions{
+		logger: log.NewDefaultLogrusLogger(),
+	}
+	for _, option := range options {
+		option.applyProtocol(optionsHash)
+	}
+
 	tcp := new(tcpProtocol)
 	tcp.network = "tcp"
 	tcp.reliable = true
 	tcp.streamed = true
 	tcp.conns = make(chan Connection)
-	tcp.log = logger.
+	tcp.log = optionsHash.logger.
 		WithPrefix("transport.Protocol").
 		WithFields(log.Fields{
 			"protocol_ptr": fmt.Sprintf("%p", tcp),
 		})
 	// TODO: add separate errs chan to listen errors from pool for reconnection?
-	tcp.listeners = NewListenerPool(tcp.conns, errs, cancel, tcp.Log())
-	tcp.connections = NewConnectionPool(output, errs, cancel, msgMapper, tcp.Log())
+	tcp.listeners = NewListenerPool(
+		tcp.conns, errs, cancel,
+		WithLogger(tcp.Log()),
+	)
+	tcp.connections = NewConnectionPool(
+		output, errs, cancel,
+		WithMessageMapper(optionsHash.msgMapper),
+		WithLogger(tcp.Log()),
+	)
 	// pipe listener and connection pools
 	go tcp.pipePools()
 
@@ -168,7 +181,7 @@ func (tcp *tcpProtocol) getOrCreateConnection(raddr *net.TCPAddr) (Connection, e
 			}
 		}
 
-		conn = NewConnection(tcpConn, key, tcp.Log())
+		conn = NewConnection(tcpConn, key, WithLogger(tcp.Log()))
 
 		if err := tcp.connections.Put(conn, sockTTL); err != nil {
 			return conn, err

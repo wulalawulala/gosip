@@ -39,7 +39,14 @@ type connection struct {
 	log log.Logger
 }
 
-func NewConnection(baseConn net.Conn, key ConnectionKey, logger log.Logger) Connection {
+func NewConnection(baseConn net.Conn, key ConnectionKey, options ...ConnectionOption) Connection {
+	optionsHash := &connectionOptions{
+		logger: log.NewDefaultLogrusLogger(),
+	}
+	for _, option := range options {
+		option.applyConnection(optionsHash)
+	}
+
 	var stream bool
 	switch baseConn.(type) {
 	case net.PacketConn:
@@ -55,7 +62,7 @@ func NewConnection(baseConn net.Conn, key ConnectionKey, logger log.Logger) Conn
 		raddr:    baseConn.RemoteAddr(),
 		streamed: stream,
 	}
-	conn.log = logger.
+	conn.log = optionsHash.logger.
 		WithPrefix("transport.Connection").
 		WithFields(log.Fields{
 			"connection_ptr": fmt.Sprintf("%p", conn),

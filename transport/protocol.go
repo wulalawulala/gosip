@@ -32,8 +32,7 @@ type ProtocolFactory func(
 	output chan<- sip.Message,
 	errs chan<- error,
 	cancel <-chan struct{},
-	msgMapper sip.MessageMapper,
-	logger log.Logger,
+	options ...ProtocolOption,
 ) (Protocol, error)
 
 type protocol struct {

@@ -42,15 +42,6 @@ type Server interface {
 	) (sip.ServerTransaction, error)
 }
 
-type TransportLayerFactory func(
-	ip net.IP,
-	dnsResolver *net.Resolver,
-	msgMapper sip.MessageMapper,
-	logger log.Logger,
-) transport.Layer
-
-type TransactionLayerFactory func(tpl transport.Layer, logger log.Logger) transaction.Layer
-
 // ServerConfig describes available options
 type ServerConfig struct {
 	// Public IP address or domain name, if empty auto resolved IP will be used.
@@ -61,12 +52,23 @@ type ServerConfig struct {
 	MsgMapper  sip.MessageMapper
 }
 
+func (c *ServerConfig) applyServer(options *serverOptions) {
+	if c == nil {
+		return
+	}
+
+	options.config.Host = c.Host
+	options.config.Dns = c.Dns
+	options.config.Extensions = c.Extensions
+	options.config.MsgMapper = c.MsgMapper
+}
+
 // Server is a SIP server
 type server struct {
 	tp              transport.Layer
 	tx              transaction.Layer
 	host            string
-	ip              net.IP
+	hostIP          net.IP
 	inShutdown      int32
 	hwg             *sync.WaitGroup
 	hmu             *sync.RWMutex
@@ -79,33 +81,34 @@ type server struct {
 }
 
 // NewServer creates new instance of SIP server.
-func NewServer(
-	config ServerConfig,
-	tpFactory TransportLayerFactory,
-	txFactory TransactionLayerFactory,
-	logger log.Logger,
-) Server {
-	if tpFactory == nil {
-		tpFactory = transport.NewLayer
+func NewServer(options ...ServerOption) Server {
+	optionsHash := &serverOptions{
+		commonOptions: commonOptions{
+			logger: log.NewDefaultLogrusLogger(),
+		},
+		config:    &ServerConfig{},
+		tpFactory: transport.NewLayer,
+		txFactory: transaction.NewLayer,
 	}
-	if txFactory == nil {
-		txFactory = transaction.NewLayer
+	for _, option := range options {
+		option.applyServer(optionsHash)
 	}
 
-	logger = logger.WithPrefix("gosip.Server")
+	config := optionsHash.config
+	logger := optionsHash.logger.WithPrefix("gosip.Server")
 
 	var host string
-	var ip net.IP
+	var hostIP net.IP
 	if config.Host != "" {
 		host = config.Host
 		if addr, err := net.ResolveIPAddr("ip", host); err == nil {
-			ip = addr.IP
+			hostIP = addr.IP
 		} else {
 			logger.Panicf("resolve host IP failed: %s", err)
 		}
 	} else {
 		if v, err := util.ResolveSelfIP(); err == nil {
-			ip = v
+			hostIP = v
 			host = v.String()
 		} else {
 			logger.Panicf("resolve host IP failed: %s", err)
@@ -121,8 +124,6 @@ func NewServer(
 				return d.DialContext(ctx, "udp", config.Dns)
 			},
 		}
-	} else {
-		dnsResolver = net.DefaultResolver
 	}
 
 	var extensions []string
@@ -132,7 +133,7 @@ func NewServer(
 
 	srv := &server{
 		host:            host,
-		ip:              ip,
+		hostIP:          hostIP,
 		hwg:             new(sync.WaitGroup),
 		hmu:             new(sync.RWMutex),
 		requestHandlers: make(map[sip.RequestMethod]RequestHandler),
@@ -143,8 +144,13 @@ func NewServer(
 	srv.log = logger.WithFields(log.Fields{
 		"sip_server_ptr": fmt.Sprintf("%p", srv),
 	})
-	srv.tp = tpFactory(ip, dnsResolver, config.MsgMapper, srv.Log())
-	srv.tx = txFactory(srv.tp, srv.Log().WithFields(srv.tp.Log().Fields()))
+	srv.tp = optionsHash.tpFactory(
+		hostIP,
+		transport.WithDnsResolver(dnsResolver),
+		transport.WithMessageMapper(config.MsgMapper),
+		transport.WithLogger(srv.Log()),
+	)
+	srv.tx = optionsHash.txFactory(srv.tp, srv.Log().WithFields(srv.tp.Log().Fields()))
 
 	go srv.serve()
 
