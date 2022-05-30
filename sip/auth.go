@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -260,6 +261,19 @@ func AuthorizeRequest(request Request, response Response, user, password MaybeSt
 		cseq := cseq.Clone().(*CSeq)
 		cseq.SeqNo++
 		request.ReplaceHeaders(cseq.Name(), []Header{cseq})
+	}
+	if contact, ok := request.Contact(); ok {
+		via, ok := response.ViaHop()
+		if ok {
+			rport, _ := via.Params.Get("rport")
+			received, _ := via.Params.Get("received")
+			contact := contact.Clone().(*ContactHeader)
+			rportInt,_:=strconv.Atoi(rport.String())
+			port := Port(rportInt)
+			contact.Address.SetHost(received.String())
+			contact.Address.SetPort(&port)
+			request.ReplaceHeaders(contact.Name(), []Header{contact})
+		}
 	}
 
 	return nil
